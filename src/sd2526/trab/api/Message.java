@@ -4,27 +4,35 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+
 /**
  * Represents a message in the system.
  */
+@Entity
 public class Message {
 
-	private String id;	
+	@Id
+	private String id;
 	private String sender;
-	
+
+	@ElementCollection(fetch = FetchType.EAGER)
 	private Set<String> destination;
 	private long creationTime;
-	private String subject;	
+	private String subject;
 	private String contents;
-	
+
 	public Message() {
 		this(null, null, Collections.emptySet(), null, null);
 	}
-	
+
 	public Message(String sender, String destination, String subject, String contents) {
 		this(null, sender, Set.of(destination), subject, contents);
 	}
-	
+
 	public Message(String sender, Set<String> destinations, String subject, String contents) {
 		this(null, sender, destinations, subject, contents);
 	}
@@ -45,19 +53,19 @@ public class Message {
 	public String getSender() {
 		return sender;
 	}
-	
+
 	public void setSender(String sender) {
 		this.sender = sender;
 	}
-	
+
 	public Set<String> getDestination() {
 		return destination;
 	}
-	
+
 	public void setDestination(Set<String> destination) {
 		this.destination = destination;
 	}
-	
+
 	public void addDestination(String destination) {
 		this.destination.add(destination);
 	}
@@ -102,7 +110,7 @@ public class Message {
 				", destination=" + destination +
 				", creationTime=" + creationTime +
 				", subject='" + subject + '\'' +
-				", contents=" + (contents.length() > 20? contents.substring(0,20) : contents )+
+				", contents=" + (contents.length() > 20 ? contents.substring(0, 20) : contents) +
 				'}';
 	}
 }
