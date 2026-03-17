@@ -128,6 +128,7 @@ public class UsersResource implements RestUsers {
     return user;
   }
 
+  @Override
   public User deleteUser(String name, String pwd) {
     Log.info("deleteUser : name = " + name + "; pwd = " + pwd);
 

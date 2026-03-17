@@ -151,4 +151,11 @@ public class Hibernate {
     }
   }
 
+  /**
+   * Returns all objects of a certain class from storage.
+   */
+  public <T> List<T> getAll(Class<T> clazz) {
+    return jpql(String.format("SELECT o FROM %s o", clazz.getSimpleName()), clazz);
+  }
+
 }
