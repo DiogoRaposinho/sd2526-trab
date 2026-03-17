@@ -67,5 +67,5 @@ public interface RestMessages {
 	@GET
 	@Path(MBOX + "/{" + NAME + "}")
 	@Produces(MediaType.APPLICATION_JSON)
-	List<String> getAllInboxMessages(String name, String pwd);
+	List<Message> getAllInboxMessages(String name, String pwd);
 }

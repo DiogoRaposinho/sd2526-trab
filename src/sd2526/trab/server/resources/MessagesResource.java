@@ -91,9 +91,24 @@ public class MessagesResource implements RestMessages {
     throw new WebApplicationException(Status.FORBIDDEN);
   }
 
+  // Ainda faltam condições provavelmente
   @Override
-  public List<String> getAllInboxMessages(String name, String pwd) {
-    List<String> result = new ArrayList<>();
+  public List<Message> getAllInboxMessages(String name, String pwd) {
+    Log.info("getMessages for " + name + " (pwd: " + pwd + ")");
+    validateUser(name, pwd);
+
+    if (name == null || pwd == null)
+      throw new WebApplicationException(Status.BAD_REQUEST);
+
+    List<Message> messages = hibernate.getAll(Message.class);
+
+    List<Message> result = new ArrayList<>();
+
+    for (Message m : messages) {
+      if (m.getDestination().contains(name + "@" + domain)) {
+        result.add(m);
+      }
+    }
 
     return result;
   }
