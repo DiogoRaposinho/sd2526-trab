@@ -18,11 +18,11 @@ public class MessagesServer {
     // Prefer IPv4 to avoid multicast issues with some network stacks
     System.setProperty("java.net.preferIPv4Stack", "true");
 
-    // Sumplified logging format for better readability in the console
+    // Simplified logging format for better readability in the console
     System.setProperty("java.util.logging.SimpleFormatter.format", "%4$s: %5$s\n");
   }
 
-  // USe a different port form UsersServer (8080) to allow running both locally
+  // Use a different port from UsersServer (8080) to allow running both locally
   public static final int PORT = 8081;
 
   // Service name used for Discovery by the other servers
@@ -34,7 +34,7 @@ public class MessagesServer {
   public static void main(String[] args) {
 
     try {
-      // CHeck if the domain argument was provided via command line
+      // Check if the domain argument was provided via command line
       if (args.length == 0) {
         Log.info("Domain argument missing.");
         return;
@@ -62,14 +62,17 @@ public class MessagesServer {
       String publicIp = InetAddress.getLocalHost().getHostAddress();
       String publicURI = String.format(SERVER_URI_FMT, publicIp, PORT);
 
-      Log.info(String.format("%s Server ('%s') ready @ %s. Local access: http://localhost:%d/rest\n", SERVICE, domain,
-          publicURI, PORT));
+      Log.info(String.format("%s Server ('%s') ready @ %s. Local access: http://localhost:%d/rest\n",
+          SERVICE, domain, publicURI, PORT));
 
-      // Strat service discpovery announcements so other servers can find this one
-      new Discovery(Discovery.DISCOVERY_ADDR, SERVICE, publicURI).start();
+      // Start service discovery announcements so other servers can find this one
+      // The service name is specialized with the domain (e.g., messages:fct)
+      String discoveryServiceName = SERVICE + ":" + domain;
+      new Discovery(discoveryServiceName, publicURI).start();
 
     } catch (Exception e) {
-      Log.info(e.getMessage());
+      Log.severe(e.getMessage());
+      e.printStackTrace();
     }
   }
 }
