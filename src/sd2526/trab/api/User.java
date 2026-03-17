@@ -1,13 +1,25 @@
 package sd2526.trab.api;
 
+import java.util.Set;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+
 /**
  * Represents a user in the system.
  */
+@Entity
 public class User {
-    private String name;	
+
+    @Id
+    private String name;
     private String pwd;
     private String domain;
     private String displayName;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    private Set<String> phoneNumbers;
 
     public User() {
         this.pwd = null;
@@ -53,6 +65,10 @@ public class User {
 
     public void setDomain(String domain) {
         this.domain = domain;
+    }
+
+    public void setPhoneNumbers(Set<String> phoneNumbers) {
+        this.phoneNumbers = phoneNumbers;
     }
 
     @Override
