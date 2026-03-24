@@ -1,8 +1,6 @@
 package sd2526.trab.api.rest;
 
 import java.util.List;
-import java.util.jar.Attributes.Name;
-
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.DefaultValue;
@@ -39,8 +37,8 @@ public interface RestMessages {
 	 * This method will use two service methods - getAllInboxMessages and
 	 * searchInbox -
 	 * depending on the query parameter.
+	 * * @param name Owner of the inbox
 	 * 
-	 * @param name  Owner of the inbox
 	 * @param pwd   Password of the owner of the inbox
 	 * @param query Query string to match the messages. If empty, matches all
 	 *              messages.
@@ -62,10 +60,10 @@ public interface RestMessages {
 	@GET
 	@Path(MBOX + "/{" + NAME + "}/{" + MID + "}")
 	@Produces(MediaType.APPLICATION_JSON)
-	Message getInboxMessage(String name, String mid, String pwd);
+	Message getInboxMessage(@PathParam(NAME) String name, @PathParam(MID) String mid, @QueryParam(PWD) String pwd);
 
 	@GET
-	@Path(MBOX + "/{" + NAME + "}")
+	@Path(MBOX + "/{" + NAME + "}/all")
 	@Produces(MediaType.APPLICATION_JSON)
-	List<Message> getAllInboxMessages(String name, String pwd);
+	List<Message> getAllInboxMessages(@PathParam(NAME) String name, @QueryParam(PWD) String pwd);
 }
