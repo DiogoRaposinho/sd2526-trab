@@ -100,9 +100,7 @@ public class MessagesResource implements RestMessages {
 
   @Override
   public Message getInboxMessage(String name, String mid, String pwd) {
-    Log.info("getInboxMessage: " + mid + " for user " + name);
     validateUser(name, pwd);
-
     Message m = hibernate.get(Message.class, mid);
     if (m == null)
       throw new WebApplicationException(Status.NOT_FOUND);
@@ -111,25 +109,22 @@ public class MessagesResource implements RestMessages {
     if (m.getSender().equals(userEmail) || (m.getDestination() != null && m.getDestination().contains(userEmail))) {
       return m;
     }
-
     throw new WebApplicationException(Status.FORBIDDEN);
   }
 
   @Override
-  public List<Message> getAllInboxMessages(String user, String pwd) {
-    Log.info("getAllInboxMessages for " + user);
-    validateUser(user, pwd);
-
+  public List<Message> getAllInboxMessages(String name, String pwd) {
+    validateUser(name, pwd);
     List<Message> all = hibernate.getAll(Message.class);
-    List<Message> res = new ArrayList<>();
-    String userEmail = user + "@" + domain;
+    List<Message> userInbox = new ArrayList<>();
+    String userEmail = name + "@" + domain;
 
     for (Message m : all) {
       if (m.getDestination() != null && m.getDestination().contains(userEmail)) {
-        res.add(m);
+        userInbox.add(m);
       }
     }
-    return res;
+    return userInbox;
   }
 
   @Override
