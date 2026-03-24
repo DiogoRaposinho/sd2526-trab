@@ -110,7 +110,7 @@ public class MessagesResource implements RestMessages {
   }
 
   @Override
-  public Message getMessage(String name, String mid, String pwd) {
+  public Message getInboxMessage(String name, String mid, String pwd) {
     Log.info("getMessage: " + mid + " for user " + name);
     validateUser(name, pwd);
 
@@ -127,23 +127,26 @@ public class MessagesResource implements RestMessages {
     throw new WebApplicationException(Status.FORBIDDEN);
   }
 
+  // Ainda faltam condições provavelmente
   @Override
-  public List<String> getMessages(String name, String pwd, String query) {
-    Log.info("getMessages for " + name + " (query: " + query + ")");
+  public List<Message> getAllInboxMessages(String name, String pwd) {
+    Log.info("getMessages for " + name + " (pwd: " + pwd + ")");
     validateUser(name, pwd);
 
+    // Fetch all messages and filter for the user's inbox
     List<Message> all = hibernate.getAll(Message.class);
     List<String> result = new ArrayList<>();
 
     for (Message m : all) {
-      if (m.getDestination() != null && m.getDestination().contains(name + "@" + domain)) {
+      if (m.getDestination().contains(name + "@" + domain)) {
         boolean matches = (query == null || query.isEmpty()) ||
-            (m.getContents() != null && m.getContents().toLowerCase().contains(query.toLowerCase()) ||
-                (m.getSubject() != null && m.getSubject().toLowerCase().contains(query.toLowerCase())));
+            (m.getContents().toLowerCase().contains(query.toLowerCase()) ||
+                m.getSubject().toLowerCase().contains(query.toLowerCase()));
         if (matches)
           result.add(m.getId());
       }
     }
+
     return result;
   }
 
@@ -165,12 +168,38 @@ public class MessagesResource implements RestMessages {
     Log.info("deleteMessage: " + mid + " by user " + name);
     validateUser(name, pwd);
 
+    if (name == null || mid == null || pwd == null)
+      throw new WebApplicationException(Status.BAD_REQUEST);
+
+    long currentTime = System.currentTimeMillis();
+
     Message m = hibernate.get(Message.class, mid);
     // Only the sender is allowed to delete the message globally
-    if (m != null && m.getSender().equals(name + "@" + domain)) {
+    if (m != null && m.getSender().startsWith(name + "@")) {
       hibernate.delete(m);
     } else if (m != null) {
       throw new WebApplicationException(Status.FORBIDDEN);
     }
+  }
+
+  @Override
+  public List<String> searchInbox(String name, String pwd, String query) {
+    Log.info("getMessages for " + name + " (query: " + query + ")");
+    validateUser(name, pwd);
+
+    // Fetch all messages and filter for the user's inbox
+    List<Message> all = hibernate.getAll(Message.class);
+    List<String> result = new ArrayList<>();
+
+    for (Message m : all) {
+      if (m.getDestination().contains(name + "@" + domain)) {
+        boolean matches = (query == null || query.isEmpty()) ||
+            (m.getContents().toLowerCase().contains(query.toLowerCase()) ||
+                m.getSubject().toLowerCase().contains(query.toLowerCase()));
+        if (matches)
+          result.add(m.getId());
+      }
+    }
+    return result;
   }
 }
