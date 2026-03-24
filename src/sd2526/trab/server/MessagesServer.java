@@ -44,11 +44,7 @@ public class MessagesServer {
 
       // Configure Jersey resources
       ResourceConfig config = new ResourceConfig();
-
-      // Register the MessagesResource instance directly to avoid the "ignored
-      // provider" warning
-      MessagesResource messagesResource = new MessagesResource(domain);
-      config.register(messagesResource);
+      config.register(new MessagesResource(domain));
 
       // Force the server to listen on all interfaces (0.0.0.0)
       // This allows connection via localhost and the network IP simultaneously
