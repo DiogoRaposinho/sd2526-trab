@@ -16,42 +16,40 @@ import java.net.URI;
 import java.util.*;
 import java.util.logging.Logger;
 
-@Path(RestMessages.PATH) // Mandatory annotation for Jersey mapping
-@Singleton // Ensures the resource instance is shared and data persists between requests
+/**
+ * Implementation of the Messages Service Resource.
+ * Handles message persistence, retrieval, and inter-service communication.
+ */
+@Path(RestMessages.PATH)
+@Singleton
 public class MessagesResource implements RestMessages {
 
-  private static Logger Log = Logger.getLogger(MessagesResource.class.getName());
+  private static final Logger Log = Logger.getLogger(MessagesResource.class.getName());
+
   private final String domain;
   private final Hibernate hibernate;
-  private final Discovery discovery; // Store discovery instance to avoid re-starting threads
+  private final Discovery discovery;
 
-  // CONSTRUCTOR: Must be public and handled via instance registration in
-  // Server.java
   public MessagesResource(String domain) {
     this.domain = domain;
     this.hibernate = Hibernate.getInstance();
 
-    // Initialize Discovery safely inside a try-catch to prevent Server crash
+    // Initialize Discovery to find other servers (e.g., Users Server)
     Discovery tempDiscovery = null;
     try {
       tempDiscovery = new Discovery();
       tempDiscovery.start();
-      Log.info("Discovery started successfully.");
+      Log.info("Discovery service started for domain: " + domain);
     } catch (Exception e) {
-      Log.severe("Could not start Discovery: " + e.getMessage());
-      // Fallback will be handled during validation
+      Log.severe("Failed to start Discovery: " + e.getMessage());
     }
     this.discovery = tempDiscovery;
   }
 
-  /**
-   * Helper method to validate user credentials using Discovery.
-   */
   private void validateUser(String name, String pwd) {
     try {
       URI userServerURI = null;
 
-      // 1. Try to find the Users server via Multicast Discovery
       if (discovery != null) {
         URI[] uris = discovery.knownUrisOf("users:" + domain, 1);
         if (uris != null && uris.length > 0) {
@@ -59,28 +57,24 @@ public class MessagesResource implements RestMessages {
         }
       }
 
-      // 2. DOCKER FALLBACK: If Discovery fails (common in Windows Docker),
-      // use the container name which is resolved by Docker's internal DNS.
+      // Docker Fallback: If Discovery fails, use the container name
       if (userServerURI == null) {
-        Log.warning("Discovery failed. Using Docker network fallback: http://users-fct:8080/rest");
+        Log.warning("Discovery failed. Using Docker DNS fallback: http://users-fct:8080/rest");
         userServerURI = URI.create("http://users-fct:8080/rest");
       }
 
-      // 3. Perform the REST call to the Users Server
       RestUsersClient client = new RestUsersClient(userServerURI);
       Result<User> res = client.getUser(name, pwd);
 
-      // 4. Validate result
       if (res == null || !res.isOK()) {
-        Log.info("User validation failed for: " + name);
+        Log.info("Authentication failed for user: " + name);
         throw new WebApplicationException(Status.FORBIDDEN);
       }
     } catch (WebApplicationException wae) {
-      throw wae; // Propagate JAX-RS exceptions
+      throw wae;
     } catch (Exception e) {
-      Log.severe("Error during validation: " + e.getMessage());
-      // Map any other error to Forbidden to avoid leaking server details
-      throw new WebApplicationException(Status.FORBIDDEN);
+      Log.severe("Internal error during user validation: " + e.getMessage());
+      throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR);
     }
   }
 
@@ -88,19 +82,14 @@ public class MessagesResource implements RestMessages {
   public String postMessage(String pwd, Message msg) {
     Log.info("postMessage: " + msg);
 
-    // Verify that the sender belongs to the server's domain
     if (msg == null || msg.getSender() == null || !msg.getSender().endsWith("@" + domain)) {
       throw new WebApplicationException(Status.FORBIDDEN);
     }
 
-    // Authenticate the sender by calling the Users Server
     validateUser(msg.getSender().split("@")[0], pwd);
 
-    // Generate a new unique ID and persist using Hibernate
     String mid = String.valueOf(Math.abs(new Random().nextLong()));
     msg.setId(mid);
-
-    // Ensure creation time is set if not provided by client
     if (msg.getCreationTime() <= 0) {
       msg.setCreationTime(System.currentTimeMillis());
     }
@@ -111,43 +100,57 @@ public class MessagesResource implements RestMessages {
 
   @Override
   public Message getInboxMessage(String name, String mid, String pwd) {
-    Log.info("getMessage: " + mid + " for user " + name);
+    Log.info("getInboxMessage: " + mid + " for user " + name);
     validateUser(name, pwd);
 
     Message m = hibernate.get(Message.class, mid);
     if (m == null)
       throw new WebApplicationException(Status.NOT_FOUND);
 
-    // Check authorization: user must be sender or recipient
-    if (m.getSender().equals(name + "@" + domain)
-        || (m.getDestination() != null && m.getDestination().contains(name + "@" + domain))) {
+    String userEmail = name + "@" + domain;
+    if (m.getSender().equals(userEmail) || (m.getDestination() != null && m.getDestination().contains(userEmail))) {
       return m;
     }
 
     throw new WebApplicationException(Status.FORBIDDEN);
   }
 
-  // Ainda faltam condições provavelmente
   @Override
-  public List<Message> getAllInboxMessages(String name, String pwd) {
-    Log.info("getMessages for " + name + " (pwd: " + pwd + ")");
-    validateUser(name, pwd);
+  public List<Message> getAllInboxMessages(String user, String pwd) {
+    Log.info("getAllInboxMessages for " + user);
+    validateUser(user, pwd);
 
-    // Fetch all messages and filter for the user's inbox
     List<Message> all = hibernate.getAll(Message.class);
-    List<String> result = new ArrayList<>();
+    List<Message> res = new ArrayList<>();
+    String userEmail = user + "@" + domain;
 
     for (Message m : all) {
-      if (m.getDestination().contains(name + "@" + domain)) {
-        boolean matches = (query == null || query.isEmpty()) ||
-            (m.getContents().toLowerCase().contains(query.toLowerCase()) ||
-                m.getSubject().toLowerCase().contains(query.toLowerCase()));
-        if (matches)
-          result.add(m.getId());
+      if (m.getDestination() != null && m.getDestination().contains(userEmail)) {
+        res.add(m);
       }
     }
+    return res;
+  }
 
-    return result;
+  @Override
+  public List<String> searchInbox(String user, String query, String pwd) {
+    Log.info("searchInbox for " + user + " (query: " + query + ")");
+    validateUser(user, pwd);
+
+    List<Message> all = hibernate.getAll(Message.class);
+    List<String> res = new ArrayList<>();
+    String userEmail = user + "@" + domain;
+
+    for (Message m : all) {
+      if (m.getDestination() != null && m.getDestination().contains(userEmail)) {
+        boolean matches = (query == null || query.isEmpty()) ||
+            (m.getContents() != null && m.getContents().toLowerCase().contains(query.toLowerCase())) ||
+            (m.getSubject() != null && m.getSubject().toLowerCase().contains(query.toLowerCase()));
+        if (matches)
+          res.add(m.getId());
+      }
+    }
+    return res;
   }
 
   @Override
@@ -168,38 +171,13 @@ public class MessagesResource implements RestMessages {
     Log.info("deleteMessage: " + mid + " by user " + name);
     validateUser(name, pwd);
 
-    if (name == null || mid == null || pwd == null)
-      throw new WebApplicationException(Status.BAD_REQUEST);
-
-    long currentTime = System.currentTimeMillis();
-
     Message m = hibernate.get(Message.class, mid);
-    // Only the sender is allowed to delete the message globally
-    if (m != null && m.getSender().startsWith(name + "@")) {
-      hibernate.delete(m);
-    } else if (m != null) {
-      throw new WebApplicationException(Status.FORBIDDEN);
-    }
-  }
-
-  @Override
-  public List<String> searchInbox(String name, String pwd, String query) {
-    Log.info("getMessages for " + name + " (query: " + query + ")");
-    validateUser(name, pwd);
-
-    // Fetch all messages and filter for the user's inbox
-    List<Message> all = hibernate.getAll(Message.class);
-    List<String> result = new ArrayList<>();
-
-    for (Message m : all) {
-      if (m.getDestination().contains(name + "@" + domain)) {
-        boolean matches = (query == null || query.isEmpty()) ||
-            (m.getContents().toLowerCase().contains(query.toLowerCase()) ||
-                m.getSubject().toLowerCase().contains(query.toLowerCase()));
-        if (matches)
-          result.add(m.getId());
+    if (m != null) {
+      if (m.getSender().equals(name + "@" + domain)) {
+        hibernate.delete(m);
+      } else {
+        throw new WebApplicationException(Status.FORBIDDEN);
       }
     }
-    return result;
   }
 }

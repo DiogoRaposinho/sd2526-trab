@@ -22,5 +22,6 @@
 		<property name="hibernate.dbcp.maxWaitMillis">-1</property>
 		<!-- Entities stored in the database -->
 		<mapping class="sd2526.trab.api.User" />
+		<mapping class="sd2526.trab.api.Message" />
 	</session-factory>
 </hibernate-configuration>
