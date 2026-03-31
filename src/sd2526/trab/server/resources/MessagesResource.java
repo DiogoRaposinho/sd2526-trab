@@ -20,7 +20,6 @@ import java.util.logging.Logger;
  * Implementation of the Messages Service Resource.
  * Handles message persistence, retrieval, and inter-service communication.
  */
-@Path(RestMessages.PATH)
 @Singleton
 public class MessagesResource implements RestMessages {
 
@@ -51,7 +50,7 @@ public class MessagesResource implements RestMessages {
       URI userServerURI = null;
 
       if (discovery != null) {
-        URI[] uris = discovery.knownUrisOf("users:" + domain, 1);
+        URI[] uris = discovery.knownUrisOf("Users@" + domain, 1);
         if (uris != null && uris.length > 0) {
           userServerURI = uris[0];
         }

@@ -55,6 +55,7 @@ public class Discovery {
 
   private final InetSocketAddress addr;
   private final String serviceName;
+  private final String serviceDomain;
   private final String serviceURI;
   private final MulticastSocket ms;
 
@@ -67,22 +68,23 @@ public class Discovery {
    * @param serviceName the name of the service to announce
    * @param serviceURI  an uri string - representing the contact endpoint
    */
-  public Discovery(String serviceName, String serviceURI) throws IOException {
-    this(DISCOVERY_ADDR, serviceName, serviceURI);
+  public Discovery(String serviceName, String serviceURI, String domain) throws IOException {
+    this(DISCOVERY_ADDR, serviceName, serviceURI, domain);
   }
 
   /**
    * Constructor for CLIENTS (Listen only)
    */
   public Discovery() throws IOException {
-    this(DISCOVERY_ADDR, null, null);
+    this(DISCOVERY_ADDR, null, null, null);
   }
 
-  public Discovery(InetSocketAddress addr, String serviceName, String serviceURI)
+  public Discovery(InetSocketAddress addr, String serviceName, String serviceURI, String domain)
       throws SocketException, UnknownHostException, IOException {
     this.addr = addr;
     this.serviceName = serviceName;
     this.serviceURI = serviceURI;
+    this.serviceDomain = domain;
 
     if (this.addr == null) {
       throw new RuntimeException("A multinet address has to be provided.");
@@ -99,9 +101,10 @@ public class Discovery {
     // If this discovery instance was initialized with information about a service,
     // start the thread that makes the periodic announcement
     if (this.serviceName != null && this.serviceURI != null) {
-      Log.info(String.format("Starting Discovery announcements on: %s for: %s -> %s", addr, serviceName, serviceURI));
+      Log.info(String.format("Starting Discovery announcements on: %s for: %s@%s -> %s",
+          addr, serviceName, serviceDomain, serviceURI));
 
-      byte[] announceBytes = String.format("%s%s%s", serviceName, DELIMITER, serviceURI).getBytes();
+      byte[] announceBytes = String.format("%s@%s\t%s", serviceName, serviceDomain, serviceURI).getBytes();
       DatagramPacket announcePkt = new DatagramPacket(announceBytes, announceBytes.length, addr);
 
       new Thread(() -> {

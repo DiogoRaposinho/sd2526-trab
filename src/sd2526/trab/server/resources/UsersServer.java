@@ -7,6 +7,9 @@ import java.util.logging.Logger;
 import org.glassfish.jersey.jdkhttp.JdkHttpServerFactory;
 import org.glassfish.jersey.server.ResourceConfig;
 
+import jakarta.inject.Singleton;
+
+@Singleton
 public class UsersServer {
 
   private static Logger Log = Logger.getLogger(UsersServer.class.getName());
@@ -52,9 +55,8 @@ public class UsersServer {
 
       Log.info(String.format("%s Server ready @ %s. Local access: http://localhost:%d/rest\n", SERVICE, domain, PORT));
 
-      String discoveryServiceName = SERVICE + ":" + domain;
       // Start the service announcement for automatic discovery
-      new Discovery(discoveryServiceName, publicURI).start();
+      new Discovery("Users", publicURI, domain).start();
 
     } catch (Exception e) {
       Log.severe(e.getMessage());

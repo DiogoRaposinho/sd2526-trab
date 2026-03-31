@@ -63,8 +63,8 @@ public class MessagesServer {
 
       // Start service discovery announcements so other servers can find this one
       // The service name is specialized with the domain (e.g., messages:fct)
-      String discoveryServiceName = SERVICE + ":" + domain;
-      new Discovery(discoveryServiceName, publicURI).start();
+
+      new Discovery("Messages", publicURI, domain).start();
 
     } catch (Exception e) {
       Log.severe(e.getMessage());

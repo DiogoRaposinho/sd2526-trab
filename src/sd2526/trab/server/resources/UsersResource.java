@@ -15,7 +15,10 @@ import sd2526.trab.api.rest.RestUsers;
 import jakarta.inject.Singleton;
 import sd2526.trab.server.persistence.Hibernate;
 
-@Path(RestUsers.PATH)
+/**
+ * Implementation of the Users Service Resource.
+ * Handles user persistence, retrieval, and management.
+ */
 @Singleton
 public class UsersResource implements RestUsers {
 
