@@ -1,4 +1,4 @@
-package sd2526.trab.server.resources;
+package sd2526.trab.server;
 
 import java.net.InetAddress;
 import java.net.URI;
@@ -8,6 +8,8 @@ import org.glassfish.jersey.jdkhttp.JdkHttpServerFactory;
 import org.glassfish.jersey.server.ResourceConfig;
 
 import jakarta.inject.Singleton;
+import sd2526.trab.server.resources.Discovery;
+import sd2526.trab.server.resources.UsersResource;
 
 @Singleton
 public class UsersServer {

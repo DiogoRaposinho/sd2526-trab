@@ -31,7 +31,7 @@ public class MessagesServer {
   // URI format string for the server endpoint
   private static final String SERVER_URI_FMT = "http://%s:%d/rest";
 
-  public static void main(String[] args) {
+  public static void main(String[] args) throws Throwable {
 
     try {
       // Check if the domain argument was provided via command line

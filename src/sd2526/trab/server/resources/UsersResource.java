@@ -1,12 +1,10 @@
 package sd2526.trab.server.resources;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 import org.hibernate.exception.ConstraintViolationException;
 
-import jakarta.ws.rs.Path;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response.Status;
 import sd2526.trab.api.User;

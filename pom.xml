@@ -7,17 +7,18 @@
 	<version>1</version>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<authors>xxxxx-yyyyy</authors>
+		<authors>65257-65771</authors>
 	</properties>
 	<build>
 		<sourceDirectory>src</sourceDirectory>
 		<resources>
-			<resource>
-				<directory>.</directory>
-				<includes>
-					<include>hibernate.cfg.xml</include>
-				</includes>
-			</resource>
+    	<resource>
+        <directory>${project.basedir}</directory>
+        <includes>
+            <include>hibernate.cfg.xml</include>
+        </includes>
+        <targetPath>.</targetPath>
+    	</resource>
 		</resources>
 		<plugins>
 			<plugin>
