@@ -8,6 +8,7 @@ import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Column;
 
 /**
  * Represents a message in the system.
@@ -23,6 +24,7 @@ public class Message {
 	private Set<String> destination;
 	private long creationTime;
 	private String subject;
+	@Column(length = 1024)
 	private String contents;
 
 	public Message() {

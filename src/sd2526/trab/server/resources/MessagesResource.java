@@ -72,7 +72,27 @@ public class MessagesResource implements RestMessages {
       throw new WebApplicationException(Status.FORBIDDEN);
     }
 
-    validateUser(msg.getSender().split("@")[0], pwd);
+    // Validate user and retrieve user data from the Users Service via REST
+    User senderUser;
+    try {
+      URI[] uris = discovery.knownUrisOf("Users@" + domain, 1);
+      if (uris == null || uris.length == 0) {
+        throw new WebApplicationException(Status.SERVICE_UNAVAILABLE);
+      }
+
+      RestUsersClient client = new RestUsersClient(uris[0]);
+      Result<User> res = client.getUser(msg.getSender().split("@")[0], pwd);
+
+      if (res == null || !res.isOK()) {
+        throw new WebApplicationException(Status.FORBIDDEN);
+      }
+
+      senderUser = res.value(); // Retrieve the User object containing the DisplayName
+    } catch (WebApplicationException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR);
+    }
 
     String mid = String.valueOf(Math.abs(new Random().nextLong()));
     msg.setId(mid);
@@ -81,14 +101,13 @@ public class MessagesResource implements RestMessages {
       msg.setCreationTime(System.currentTimeMillis());
     }
 
-    // 🔥 FIX HERE
-    User senderUser = hibernate.get(User.class, msg.getSender().split("@")[0]);
-
+    // Format the sender string using data retrieved from the Users Service
     String formattedSender = senderUser.getDisplayName() +
         " <" + senderUser.getName() + "@" + senderUser.getDomain() + ">";
 
     msg.setSender(formattedSender);
 
+    // Persist the message in the local Messages Service database
     hibernate.persist(msg);
     return mid;
   }
