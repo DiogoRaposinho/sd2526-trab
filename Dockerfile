@@ -7,4 +7,4 @@ ADD hibernate.cfg.xml .
 ADD messages.props .
 
 # copy the jar created by assembly to the docker image
-COPY target/sd*.jar sd2526.jar
+COPY target/sd2526-tp1-1.jar sd2526.jar

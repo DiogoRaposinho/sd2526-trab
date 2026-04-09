@@ -31,16 +31,11 @@ public class MessagesServer {
   // URI format string for the server endpoint
   private static final String SERVER_URI_FMT = "http://%s:%d/rest";
 
-  public static void main(String[] args) throws Throwable {
+  public static void main(String[] args) {
 
     try {
       // Check if the domain argument was provided via command line
-      if (args.length == 0) {
-        Log.info("Domain argument missing.");
-        return;
-      }
-
-      String domain = args[0];
+      String domain = (args.length > 0) ? args[0] : "ourorg";
 
       // Configure Jersey resources
       ResourceConfig config = new ResourceConfig();

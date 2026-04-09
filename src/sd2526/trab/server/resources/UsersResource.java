@@ -1,10 +1,12 @@
 package sd2526.trab.server.resources;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 import org.hibernate.exception.ConstraintViolationException;
 
+import jakarta.ws.rs.Path;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response.Status;
 import sd2526.trab.api.User;
@@ -44,23 +46,41 @@ public class UsersResource implements RestUsers {
 
   @Override
   public String postUser(User user) {
+
     Log.info("postUser : " + user);
 
-    // Check if user data is valid
-    if (user.getName() == null || user.getPwd() == null || user.getDisplayName() == null
-        || user.getDomain() == null) {
+    // Validate user
+    if (user.getName() == null || user.getPwd() == null ||
+        user.getDisplayName() == null || user.getDomain() == null) {
+
       Log.info("User object invalid.");
       throw new WebApplicationException(Status.BAD_REQUEST);
     }
 
     try {
       hibernate.persist(user);
+
     } catch (ConstraintViolationException e) {
-      e.printStackTrace(); // This exception is due to the user already existing...
-      Log.info("User already exists.");
+
+      Log.info("User already exists. Checking if identical...");
+
+      User existing = hibernate.get(User.class, user.getName());
+
+      if (existing != null &&
+          existing.getPwd().equals(user.getPwd()) &&
+          existing.getDisplayName().equals(user.getDisplayName()) &&
+          existing.getDomain().equals(user.getDomain())) {
+
+        // Same user → idempotent
+        Log.info("Same user. Returning OK.");
+        return user.getName() + "@" + user.getDomain();
+      }
+
+      // Different data → conflict
+      Log.info("User exists but data is different.");
       throw new WebApplicationException(Status.CONFLICT);
     } catch (Exception x) {
-      x.printStackTrace(); // Un-expected exception. Signal internal server error.
+      x.printStackTrace();
       throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR);
     }
 
@@ -98,31 +118,36 @@ public class UsersResource implements RestUsers {
   public User updateUser(String name, String pwd, User info) {
     Log.info("updateUser : name = " + name + "; pwd = " + pwd + " ; info = " + info);
 
-    /**
-     * Ver se tenho de retirar esta parte, pq já uso o método getUser(name, pwd)
-     * nesta classe
-     */
+    // Basic null checks
     if (name == null || pwd == null || info == null) {
-      Log.info("Name or password doesn't exist");
+      Log.info("Name or password or info is null");
       throw new WebApplicationException(Status.BAD_REQUEST);
     }
 
-    User user = this.getUser(name, pwd);
+    if (info.getName() != null) {
+      Log.info("Attempt to change user name");
+      throw new WebApplicationException(Status.BAD_REQUEST);
+    }
+
+    if (info.getDomain() != null) {
+      Log.info("Attempt to change domain");
+      throw new WebApplicationException(Status.BAD_REQUEST);
+    }
+
+    User user = this.getUser(name, pwd); // this already handles 403
 
     try {
-      String newPwd = info.getPwd();
-      String newDisplayName = info.getDisplayName();
+      // Apply only allowed updates
+      if (info.getPwd() != null)
+        user.setPwd(info.getPwd());
 
-      if (newPwd != null)
-        user.setPwd(newPwd);
-
-      if (newDisplayName != null)
-        user.setDisplayName(newDisplayName);
+      if (info.getDisplayName() != null)
+        user.setDisplayName(info.getDisplayName());
 
       hibernate.update(user);
 
     } catch (Exception x) {
-      x.printStackTrace(); // Un-expected exception. Signal internal server error.
+      x.printStackTrace();
       throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR);
     }
 
