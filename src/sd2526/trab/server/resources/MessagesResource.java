@@ -72,44 +72,62 @@ public class MessagesResource implements RestMessages {
       throw new WebApplicationException(Status.FORBIDDEN);
     }
 
-    // Validate user and retrieve user data from the Users Service via REST
-    User senderUser;
-    try {
-      URI[] uris = discovery.knownUrisOf("Users@" + domain, 1);
-      if (uris == null || uris.length == 0) {
-        throw new WebApplicationException(Status.SERVICE_UNAVAILABLE);
+    // 1. Idempotency: If the message already has an ID, check if it exists in the
+    // database
+    if (msg.getId() != null) {
+      Message existing = hibernate.get(Message.class, msg.getId());
+      if (existing != null) {
+        return existing.getId();
       }
-
-      RestUsersClient client = new RestUsersClient(uris[0]);
-      Result<User> res = client.getUser(msg.getSender().split("@")[0], pwd);
-
-      if (res == null || !res.isOK()) {
-        throw new WebApplicationException(Status.FORBIDDEN);
-      }
-
-      senderUser = res.value(); // Retrieve the User object containing the DisplayName
-    } catch (WebApplicationException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR);
+    } else {
+      // Generate new ID for new messages
+      String mid = String.valueOf(Math.abs(new Random().nextLong()));
+      msg.setId(mid);
     }
 
-    String mid = String.valueOf(Math.abs(new Random().nextLong()));
-    msg.setId(mid);
+    // 2. Validate sender and retrieve user details from Users service via REST
+    User senderUser;
+    URI[] userUris = discovery.knownUrisOf("Users@" + domain, 1);
+    if (userUris == null || userUris.length == 0)
+      throw new WebApplicationException(Status.SERVICE_UNAVAILABLE);
+
+    RestUsersClient usersClient = new RestUsersClient(userUris[0]);
+    Result<User> senderRes = usersClient.getUser(msg.getSender().split("@")[0], pwd);
+
+    if (senderRes == null || !senderRes.isOK())
+      throw new WebApplicationException(Status.FORBIDDEN);
+    senderUser = senderRes.value();
 
     if (msg.getCreationTime() <= 0) {
       msg.setCreationTime(System.currentTimeMillis());
     }
 
-    // Format the sender string using data retrieved from the Users Service
-    String formattedSender = senderUser.getDisplayName() +
-        " <" + senderUser.getName() + "@" + senderUser.getDomain() + ">";
+    // 3. Update sender with the full DisplayName format
+    String fullSender = senderUser.getDisplayName() + " <" + senderUser.getName() + "@" + senderUser.getDomain() + ">";
+    msg.setSender(fullSender);
 
-    msg.setSender(formattedSender);
+    // 4. Validate each destination and handle non-existent users (required for test
+    // 4d)
+    for (String dest : msg.getDestination()) {
+      if (dest.endsWith("@" + domain)) {
+        String destName = dest.split("@")[0];
+        // Check if destination user exists (using null pwd because we just check
+        // existence)
+        Result<User> destRes = usersClient.getUser(destName, null);
 
-    // Persist the message in the local Messages Service database
+        // If destination does not exist, create a failure notification for the sender
+        if (destRes.error() == Result.ErrorCode.NOT_FOUND) {
+          String errorId = msg.getId() + "." + dest;
+          Message errorMsg = new Message(errorId, "System", senderUser.getName() + "@" + domain, "Failure Notification",
+              "User " + dest + " does not exist.");
+          hibernate.persist(errorMsg);
+        }
+      }
+    }
+
+    // 5. Persist the original message
     hibernate.persist(msg);
-    return mid;
+    return msg.getId();
   }
 
   @Override
@@ -189,7 +207,11 @@ public class MessagesResource implements RestMessages {
 
     Message m = hibernate.get(Message.class, mid);
     if (m != null) {
-      if (m.getSender().equals(name + "@" + domain)) {
+      String userEmail = name + "@" + domain;
+
+      // Check if the sender string contains the user's email
+      // (Handles both "user@domain" and "Display Name <user@domain>")
+      if (m.getSender().contains("<" + userEmail + ">") || m.getSender().equals(userEmail)) {
         hibernate.delete(m);
       } else {
         throw new WebApplicationException(Status.FORBIDDEN);
