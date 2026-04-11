@@ -8,7 +8,8 @@ import java.net.URI;
 
 public class GatewayServer {
 
-    public static final String BASE_URI = "http://0.0.0.0:8082/";
+    // CORREÇÃO: Tem de ter obrigatoriamente o /rest aqui no fim
+    public static final String BASE_URI = "http://0.0.0.0:8082/rest";
 
     public static void main(String[] args) {
 

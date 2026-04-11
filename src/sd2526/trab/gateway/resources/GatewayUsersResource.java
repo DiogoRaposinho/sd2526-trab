@@ -3,33 +3,60 @@ package sd2526.trab.gateway.resources;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import sd2526.trab.server.resources.Discovery;
 
 import java.net.URI;
 import java.net.http.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Path("/users")
 @Produces(MediaType.APPLICATION_JSON)
 public class GatewayUsersResource {
 
     private final HttpClient client = HttpClient.newHttpClient();
-    private final String USERS_URL = "http://users:8080/rest/users";
+    private final Discovery discovery;
 
-    // ----------- HELPER -----------
+    public GatewayUsersResource() {
+        try {
+            this.discovery = new Discovery();
+            this.discovery.start();
+        } catch (Exception e) {
+            throw new RuntimeException("Falha ao inicializar o Discovery no Gateway Users", e);
+        }
+    }
+
+    // Método inteligente para descobrir onde está o serviço de Users
+    private String getBaseUrl(String domain) {
+        try {
+            URI[] uris = discovery.knownUrisOf("Users@" + domain, 1);
+            if (uris != null && uris.length > 0) {
+                // O Discovery devolve algo como http://172.x.x.x:8080/rest
+                return uris[0].toString() + "/users";
+            }
+        } catch (Exception e) {
+            // Ignora e usa fallback
+        }
+        // Fallback seguro usando o formato de nome do contentor do teste
+        return "http://users0." + domain + ":8080/rest/users";
+    }
 
     private String extractName(String userId) {
-        return userId.contains("@") ? userId.split("@")[0] : userId;
+        return userId != null && userId.contains("@") ? userId.split("@")[0] : userId;
+    }
+
+    private String extractDomain(String userId, String fallback) {
+        return userId != null && userId.contains("@") ? userId.split("@")[1] : fallback;
     }
 
     private Response forward(HttpRequest request) {
         try {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
             return Response.status(response.statusCode())
                     .entity(response.body())
                     .build();
-
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new WebApplicationException(Response.Status.SERVICE_UNAVAILABLE);
         }
     }
 
@@ -37,87 +64,60 @@ public class GatewayUsersResource {
         return HttpRequest.newBuilder(URI.create(url));
     }
 
-    // ----------- CREATE USER -----------
-
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     public Response createUser(String body) {
+        String domain = "ourorg";
+        // Tenta extrair o domínio a partir do corpo JSON da request
+        Matcher m = Pattern.compile("\"domain\"\\s*:\\s*\"([^\"]+)\"").matcher(body);
+        if (m.find())
+            domain = m.group(1);
 
-        HttpRequest request = baseRequest(USERS_URL)
+        String url = getBaseUrl(domain);
+        HttpRequest request = baseRequest(url)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .header("Content-Type", "application/json")
                 .build();
-
         return forward(request);
     }
-
-    // ----------- GET USER -----------
 
     @GET
     @Path("{name}")
-    public Response getUser(@PathParam("name") String name,
-            @QueryParam("pwd") String pwd) {
-
+    public Response getUser(@PathParam("name") String name, @QueryParam("pwd") String pwd) {
+        String domain = extractDomain(name, "ourorg");
         String realName = extractName(name);
-
-        String url = USERS_URL + "/" + realName + "?pwd=" + pwd;
-
-        HttpRequest request = baseRequest(url).GET().build();
-
-        return forward(request);
+        String url = getBaseUrl(domain) + "/" + realName + "?pwd=" + pwd;
+        return forward(baseRequest(url).GET().build());
     }
-
-    // ----------- UPDATE USER -----------
 
     @PUT
     @Path("{name}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response updateUser(@PathParam("name") String name,
-            @QueryParam("pwd") String pwd,
-            String body) {
-
+    public Response updateUser(@PathParam("name") String name, @QueryParam("pwd") String pwd, String body) {
+        String domain = extractDomain(name, "ourorg");
         String realName = extractName(name);
-
-        String url = USERS_URL + "/" + realName + "?pwd=" + pwd;
-
+        String url = getBaseUrl(domain) + "/" + realName + "?pwd=" + pwd;
         HttpRequest request = baseRequest(url)
                 .PUT(HttpRequest.BodyPublishers.ofString(body))
                 .header("Content-Type", "application/json")
                 .build();
-
         return forward(request);
     }
-
-    // ----------- DELETE USER -----------
 
     @DELETE
     @Path("{name}")
-    public Response deleteUser(@PathParam("name") String name,
-            @QueryParam("pwd") String pwd) {
-
+    public Response deleteUser(@PathParam("name") String name, @QueryParam("pwd") String pwd) {
+        String domain = extractDomain(name, "ourorg");
         String realName = extractName(name);
-
-        String url = USERS_URL + "/" + realName + "?pwd=" + pwd;
-
-        HttpRequest request = baseRequest(url).DELETE().build();
-
-        return forward(request);
+        String url = getBaseUrl(domain) + "/" + realName + "?pwd=" + pwd;
+        return forward(baseRequest(url).DELETE().build());
     }
 
-    // ----------- SEARCH USERS -----------
-
     @GET
-    public Response searchUsers(@QueryParam("name") String name,
-            @QueryParam("pwd") String pwd,
+    public Response searchUsers(@QueryParam("name") String name, @QueryParam("pwd") String pwd,
             @QueryParam("query") String query) {
-
-        String url = USERS_URL
-                + "?name=" + name
-                + "&pwd=" + pwd
-                + (query != null ? "&query=" + query : "");
-
-        HttpRequest request = baseRequest(url).GET().build();
-
-        return forward(request);
+        String domain = extractDomain(name, "ourorg");
+        String url = getBaseUrl(domain) + "?name=" + name + "&pwd=" + pwd + (query != null ? "&query=" + query : "");
+        return forward(baseRequest(url).GET().build());
     }
 }
