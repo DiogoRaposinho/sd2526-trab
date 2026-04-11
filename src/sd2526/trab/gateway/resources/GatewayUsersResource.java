@@ -26,18 +26,16 @@ public class GatewayUsersResource {
         }
     }
 
-    // Método inteligente para descobrir onde está o serviço de Users
     private String getBaseUrl(String domain) {
         try {
             URI[] uris = discovery.knownUrisOf("Users@" + domain, 1);
             if (uris != null && uris.length > 0) {
-                // O Discovery devolve algo como http://172.x.x.x:8080/rest
                 return uris[0].toString() + "/users";
             }
         } catch (Exception e) {
-            // Ignora e usa fallback
+
         }
-        // Fallback seguro usando o formato de nome do contentor do teste
+
         return "http://users0." + domain + ":8080/rest/users";
     }
 
@@ -68,7 +66,7 @@ public class GatewayUsersResource {
     @Consumes(MediaType.APPLICATION_JSON)
     public Response createUser(String body) {
         String domain = "ourorg";
-        // Tenta extrair o domínio a partir do corpo JSON da request
+
         Matcher m = Pattern.compile("\"domain\"\\s*:\\s*\"([^\"]+)\"").matcher(body);
         if (m.find())
             domain = m.group(1);

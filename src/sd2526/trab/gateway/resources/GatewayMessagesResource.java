@@ -26,7 +26,6 @@ public class GatewayMessagesResource {
         }
     }
 
-    // Método inteligente para descobrir onde está o serviço de Messages
     private String getBaseUrl(String domain) {
         try {
             URI[] uris = discovery.knownUrisOf("Messages@" + domain, 1);
@@ -34,9 +33,8 @@ public class GatewayMessagesResource {
                 return uris[0].toString() + "/messages";
             }
         } catch (Exception e) {
-            // Ignora e usa fallback
         }
-        // Fallback seguro
+
         return "http://messages0." + domain + ":8081/rest/messages";
     }
 
@@ -63,7 +61,6 @@ public class GatewayMessagesResource {
     @Consumes(MediaType.APPLICATION_JSON)
     public Response sendMessage(@QueryParam("pwd") String pwd, String body) {
         String domain = "ourorg";
-        // Tenta extrair o domínio de destino a partir do sender no corpo JSON
         Matcher m = Pattern.compile("\"sender\"\\s*:\\s*\"[^\"]*?@([^\"]+)\"").matcher(body);
         if (m.find())
             domain = m.group(1);

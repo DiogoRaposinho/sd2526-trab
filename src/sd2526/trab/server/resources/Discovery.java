@@ -15,42 +15,19 @@ import java.util.HashSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
-/**
- * <p>
- * A class to perform service discovery, based on periodic service contact
- * endpoint announcements over multicast communication.
- * </p>
- *
- * <p>
- * Servers announce their *name* and contact *uri* at regular intervals. The
- * server actively collects received announcements.
- * </p>
- *
- * <p>
- * Service announcements have the following format:
- * </p>
- *
- * <p>
- * &lt;service-name-string&gt;&lt;delimiter-char&gt;&lt;service-uri-string&gt;
- * </p>
- */
 public class Discovery {
   private static Logger Log = Logger.getLogger(Discovery.class.getName());
 
   static {
-    // addresses some multicast issues on some TCP/IP stacks
     System.setProperty("java.net.preferIPv4Stack", "true");
-    // summarizes the logging format
     System.setProperty("java.util.logging.SimpleFormatter.format", "%4$s: %5$s\n");
   }
 
-  // The pre-aggreed multicast endpoint assigned to perform discovery.
   static final public InetSocketAddress DISCOVERY_ADDR = new InetSocketAddress("226.226.226.226", 2266);
   static final int DISCOVERY_ANNOUNCE_PERIOD = 1000;
   static final int DISCOVERY_RETRY_TIMEOUT = 5000;
   static final int MAX_DATAGRAM_SIZE = 65536;
 
-  // Used separate the two fields that make up a service announcement.
   private static final String DELIMITER = "\t";
 
   private final InetSocketAddress addr;
@@ -59,22 +36,12 @@ public class Discovery {
   private final String serviceURI;
   private final MulticastSocket ms;
 
-  // Structure to store discovered services
   private final Map<String, Set<URI>> discoveredServices = new ConcurrentHashMap<>();
 
-  /**
-   * Constructor for SERVERS (Announce and Listen)
-   * 
-   * @param serviceName the name of the service to announce
-   * @param serviceURI  an uri string - representing the contact endpoint
-   */
   public Discovery(String serviceName, String serviceURI, String domain) throws IOException {
     this(DISCOVERY_ADDR, serviceName, serviceURI, domain);
   }
 
-  /**
-   * Constructor for CLIENTS (Listen only)
-   */
   public Discovery() throws IOException {
     this(DISCOVERY_ADDR, null, null, null);
   }
@@ -94,12 +61,8 @@ public class Discovery {
     this.ms.joinGroup(addr, NetworkInterface.getByInetAddress(InetAddress.getLocalHost()));
   }
 
-  /**
-   * Starts sending service announcements at regular intervals...
-   */
   public void start() {
-    // If this discovery instance was initialized with information about a service,
-    // start the thread that makes the periodic announcement
+
     if (this.serviceName != null && this.serviceURI != null) {
       Log.info(String.format("Starting Discovery announcements on: %s for: %s@%s -> %s",
           addr, serviceName, serviceDomain, serviceURI));
@@ -113,13 +76,12 @@ public class Discovery {
             ms.send(announcePkt);
             Thread.sleep(DISCOVERY_ANNOUNCE_PERIOD);
           } catch (Exception e) {
-            // do nothing
+
           }
         }
       }).start();
     }
 
-    // start thread to collect announcements received from the network.
     new Thread(() -> {
       DatagramPacket pkt = new DatagramPacket(new byte[MAX_DATAGRAM_SIZE], MAX_DATAGRAM_SIZE);
       for (;;) {
@@ -138,20 +100,12 @@ public class Discovery {
             }
           }
         } catch (IOException e) {
-          // do nothing
+
         }
       }
     }).start();
   }
 
-  /**
-   * Returns the known services.
-   * 
-   * @param serviceName the name of the service being discovered
-   * @param minReplies  - minimum number of requested URIs. Blocks until the
-   *                    number is satisfied.
-   * @return an array of URI with the service instances discovered.
-   */
   public URI[] knownUrisOf(String serviceName, int minReplies) {
     synchronized (discoveredServices) {
       while (true) {
@@ -162,7 +116,6 @@ public class Discovery {
         try {
           discoveredServices.wait(DISCOVERY_RETRY_TIMEOUT);
         } catch (InterruptedException e) {
-          // ignore
         }
       }
     }

@@ -3,6 +3,10 @@ package sd2526.trab.server.resources;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.ClientBuilder;
+import jakarta.ws.rs.client.Entity;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response.Status;
 
 import sd2526.trab.api.Message;
@@ -17,11 +21,8 @@ import java.net.URI;
 import java.util.*;
 import java.util.logging.Logger;
 
-/**
- * Implementation of the Messages Service Resource.
- * Handles message persistence, retrieval, and inter-service communication.
- */
 @Singleton
+@Path("/messages")
 public class MessagesResource implements RestMessages {
 
   private static final Logger Log = Logger.getLogger(MessagesResource.class.getName());
@@ -29,169 +30,208 @@ public class MessagesResource implements RestMessages {
   private final String domain;
   private final Hibernate hibernate;
   private final Discovery discovery;
+  private final Client jerseyClient;
 
   public MessagesResource(String domain) throws IOException {
     this.domain = domain;
     this.hibernate = Hibernate.getInstance();
     this.discovery = new Discovery();
-
-    discovery.start();
+    this.discovery.start();
+    this.jerseyClient = ClientBuilder.newClient();
   }
 
-  private void validateUser(String name, String pwd) {
+  private User validateUser(String name, String pwd) {
+    URI[] uris = discovery.knownUrisOf("Users@" + domain, 1);
+    if (uris == null || uris.length == 0)
+      throw new WebApplicationException(Status.SERVICE_UNAVAILABLE);
+
+    Result<User> res = new RestUsersClient(uris[0]).getUser(name, pwd);
+    if (res == null || !res.isOK())
+      throw new WebApplicationException(Status.FORBIDDEN);
+    return res.value();
+  }
+
+  private boolean localUserExists(String destName, String senderName, String senderPwd, RestUsersClient usersClient) {
     try {
-      URI[] uris = discovery.knownUrisOf("Users@" + domain, 1);
-
-      if (uris == null || uris.length == 0) {
-        Log.severe("Users service not found in Discovery");
-        throw new WebApplicationException(Status.SERVICE_UNAVAILABLE);
+      Result<List<User>> res = usersClient.searchUsers(senderName, senderPwd, destName);
+      if (res != null && res.isOK() && res.value() != null) {
+        for (User u : res.value()) {
+          if (u.getName().equalsIgnoreCase(destName))
+            return true;
+        }
       }
-
-      URI userServerURI = uris[0];
-
-      RestUsersClient client = new RestUsersClient(userServerURI);
-      Result<User> res = client.getUser(name, pwd);
-
-      if (res == null || !res.isOK()) {
-        throw new WebApplicationException(Status.FORBIDDEN);
-      }
-
-    } catch (WebApplicationException e) {
-      throw e;
+      return false;
     } catch (Exception e) {
-      Log.severe("User validation failed: " + e.getMessage());
-      throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR);
+      return false;
     }
+  }
+
+  private String getDomainFromEmail(String email) {
+    String pureEmail = email;
+    if (pureEmail.contains("<") && pureEmail.contains(">")) {
+      pureEmail = pureEmail.substring(pureEmail.indexOf("<") + 1, pureEmail.indexOf(">"));
+    }
+    return pureEmail.contains("@") ? pureEmail.split("@")[1] : this.domain;
   }
 
   @Override
   public String postMessage(String pwd, Message msg) {
     Log.info("postMessage: " + msg);
 
-    if (msg == null || msg.getSender() == null || !msg.getSender().endsWith("@" + domain)) {
+    if (msg == null || msg.getSender() == null) {
       throw new WebApplicationException(Status.FORBIDDEN);
     }
 
-    // 1. Idempotency: If the message already has an ID, check if it exists in the
-    // database
-    if (msg.getId() != null) {
-      Message existing = hibernate.get(Message.class, msg.getId());
-      if (existing != null) {
-        return existing.getId();
+    String senderDomain = getDomainFromEmail(msg.getSender());
+
+    if (!senderDomain.equals(this.domain)) {
+      if (msg.getId() != null) {
+        Message existing = hibernate.get(Message.class, msg.getId());
+        if (existing == null)
+          hibernate.persist(msg);
+        return msg.getId();
+      } else {
+        throw new WebApplicationException(Status.FORBIDDEN);
       }
-    } else {
-      // Generate new ID for new messages
-      String mid = String.valueOf(Math.abs(new Random().nextLong()));
-      msg.setId(mid);
     }
 
-    // 2. Validate sender and retrieve user details from Users service via REST
-    User senderUser;
+    if (msg.getId() != null) {
+      Message existing = hibernate.get(Message.class, msg.getId());
+      if (existing != null)
+        return existing.getId();
+    } else {
+      msg.setId(String.valueOf(Math.abs(new Random().nextLong())));
+    }
+
     URI[] userUris = discovery.knownUrisOf("Users@" + domain, 1);
     if (userUris == null || userUris.length == 0)
       throw new WebApplicationException(Status.SERVICE_UNAVAILABLE);
 
     RestUsersClient usersClient = new RestUsersClient(userUris[0]);
-    Result<User> senderRes = usersClient.getUser(msg.getSender().split("@")[0], pwd);
+    String pureEmail = msg.getSender();
+    if (pureEmail.contains("<") && pureEmail.contains(">")) {
+      pureEmail = pureEmail.substring(pureEmail.indexOf("<") + 1, pureEmail.indexOf(">"));
+    }
+    String senderName = pureEmail.split("@")[0];
 
+    Result<User> senderRes = usersClient.getUser(senderName, pwd);
     if (senderRes == null || !senderRes.isOK())
       throw new WebApplicationException(Status.FORBIDDEN);
-    senderUser = senderRes.value();
 
-    if (msg.getCreationTime() <= 0) {
+    User senderUser = senderRes.value();
+
+    if (msg.getCreationTime() <= 0)
       msg.setCreationTime(System.currentTimeMillis());
+
+    String senderEmail = senderUser.getName() + "@" + domain;
+    msg.setSender(senderUser.getDisplayName() + " <" + senderEmail + ">");
+
+    Set<String> localDests = new HashSet<>();
+    Set<String> remoteDests = new HashSet<>();
+
+    for (String dest : msg.getDestination()) {
+      if (!dest.contains("@"))
+        continue;
+      if (dest.split("@")[1].equals(this.domain))
+        localDests.add(dest);
+      else
+        remoteDests.add(dest);
     }
 
-    // 3. Update sender with the full DisplayName format
-    String fullSender = senderUser.getDisplayName() + " <" + senderUser.getName() + "@" + senderUser.getDomain() + ">";
-    msg.setSender(fullSender);
-
-    // 4. Validate each destination and handle non-existent users (required for test
-    // 4d)
-    for (String dest : msg.getDestination()) {
-      if (dest.endsWith("@" + domain)) {
-        String destName = dest.split("@")[0];
-        // Check if destination user exists (using null pwd because we just check
-        // existence)
-        Result<User> destRes = usersClient.getUser(destName, null);
-
-        // If destination does not exist, create a failure notification for the sender
-        if (destRes.error() == Result.ErrorCode.NOT_FOUND) {
-          String errorId = msg.getId() + "." + dest;
-          Message errorMsg = new Message(errorId, "System", senderUser.getName() + "@" + domain, "Failure Notification",
-              "User " + dest + " does not exist.");
-          hibernate.persist(errorMsg);
-        }
+    for (String dest : localDests) {
+      String destName = dest.split("@")[0];
+      if (!localUserExists(destName, senderName, pwd, usersClient)) {
+        String errorId = msg.getId() + "." + dest;
+        Message errorMsg = new Message(errorId, "System", senderEmail, "Failure Notification",
+            "User " + dest + " does not exist.");
+        errorMsg.setDestination(Set.of(senderEmail));
+        hibernate.persist(errorMsg);
       }
     }
 
-    // 5. Persist the original message
     hibernate.persist(msg);
+
+    if (!remoteDests.isEmpty()) {
+      forwardToRemoteDomains(msg, remoteDests, pwd);
+    }
+
     return msg.getId();
+  }
+
+  private void forwardToRemoteDomains(Message original, Set<String> remoteDests, String pwd) {
+    Map<String, Set<String>> byDomain = new HashMap<>();
+    for (String dest : remoteDests)
+      byDomain.computeIfAbsent(dest.split("@")[1], k -> new HashSet<>()).add(dest);
+
+    for (Map.Entry<String, Set<String>> entry : byDomain.entrySet()) {
+      String remoteDomain = entry.getKey();
+      try {
+        URI[] uris = discovery.knownUrisOf("Messages@" + remoteDomain, 1);
+        if (uris == null || uris.length == 0)
+          continue;
+
+        Message copy = new Message(original.getId(), original.getSender(), entry.getValue(), original.getSubject(),
+            original.getContents());
+        copy.setCreationTime(original.getCreationTime());
+
+        jerseyClient.target(uris[0])
+            .path("/messages")
+            .queryParam("pwd", pwd)
+            .request()
+            .post(Entity.entity(copy, MediaType.APPLICATION_JSON));
+      } catch (Exception e) {
+        Log.warning("Erro ao enviar para " + remoteDomain + ": " + e.getMessage());
+      }
+    }
   }
 
   @Override
   public Message getInboxMessage(String name, String mid, String pwd) {
     validateUser(name, pwd);
-
     Message m = hibernate.get(Message.class, mid);
-    if (m == null) {
+    if (m == null)
       throw new WebApplicationException(Status.NOT_FOUND);
-    }
 
     String userEmail = name + "@" + domain;
-
-    // ONLY inbox access allowed
     if (m.getDestination() != null && m.getDestination().contains(userEmail)) {
       return m;
     }
-
     throw new WebApplicationException(Status.FORBIDDEN);
   }
 
   @Override
   public List<Message> getAllInboxMessages(String name, String pwd) {
     validateUser(name, pwd);
-    List<Message> all = hibernate.getAll(Message.class);
-    List<Message> userInbox = new ArrayList<>();
     String userEmail = name + "@" + domain;
 
-    for (Message m : all) {
-      if (m.getDestination() != null && m.getDestination().contains(userEmail)) {
-        userInbox.add(m);
-      }
-    }
-    return userInbox;
+    String query = "SELECT m FROM Message m WHERE '" + userEmail + "' member of m.destination";
+    List<Message> userInbox = hibernate.jpql(query, Message.class);
+
+    return userInbox != null ? userInbox : new ArrayList<>();
   }
 
   @Override
-  public List<String> searchInbox(String name, String pwd, String query) {
-    Log.info("searchInbox for " + name + " (query: " + query + ")");
-
+  public List<String> searchInbox(String name, String pwd, String queryStr) {
     validateUser(name, pwd);
-
-    List<Message> all = hibernate.getAll(Message.class);
-    List<String> res = new ArrayList<>();
     String userEmail = name + "@" + domain;
 
-    for (Message m : all) {
-      if (m.getDestination() != null && m.getDestination().contains(userEmail)) {
-        boolean matches = query == null || query.isEmpty() ||
-            (m.getContents() != null && m.getContents().toLowerCase().contains(query.toLowerCase())) ||
-            (m.getSubject() != null && m.getSubject().toLowerCase().contains(query.toLowerCase()));
+    String query = "SELECT m FROM Message m WHERE '" + userEmail + "' member of m.destination";
+    List<Message> inbox = hibernate.jpql(query, Message.class);
 
-        if (matches)
-          res.add(m.getId());
-      }
+    List<String> res = new ArrayList<>();
+    for (Message m : inbox) {
+      boolean matches = queryStr == null || queryStr.isEmpty()
+          || (m.getContents() != null && m.getContents().toLowerCase().contains(queryStr.toLowerCase()))
+          || (m.getSubject() != null && m.getSubject().toLowerCase().contains(queryStr.toLowerCase()));
+      if (matches)
+        res.add(m.getId());
     }
     return res;
   }
 
   @Override
   public void removeFromUserInbox(String name, String mid, String pwd) {
-    Log.info("removeFromUserInbox: " + mid + " for user " + name);
     validateUser(name, pwd);
-
     Message m = hibernate.get(Message.class, mid);
     if (m != null && m.getDestination() != null) {
       if (m.getDestination().remove(name + "@" + domain)) {
@@ -202,19 +242,56 @@ public class MessagesResource implements RestMessages {
 
   @Override
   public void deleteMessage(String name, String mid, String pwd) {
-    Log.info("deleteMessage: " + mid + " by user " + name);
-    validateUser(name, pwd);
-
     Message m = hibernate.get(Message.class, mid);
-    if (m != null) {
-      String userEmail = name + "@" + domain;
+    if (m == null)
+      return;
 
-      // Check if the sender string contains the user's email
-      // (Handles both "user@domain" and "Display Name <user@domain>")
-      if (m.getSender().contains("<" + userEmail + ">") || m.getSender().equals(userEmail)) {
-        hibernate.delete(m);
-      } else {
+    String trueSenderDomain = getDomainFromEmail(m.getSender());
+
+    if (trueSenderDomain.equals(this.domain)) {
+      validateUser(name, pwd);
+      String userEmail = name + "@" + this.domain;
+      if (!m.getSender().contains("<" + userEmail + ">") && !m.getSender().equals(userEmail)) {
         throw new WebApplicationException(Status.FORBIDDEN);
+      }
+    } else {
+      String expectedEmailPrefix = name + "@" + trueSenderDomain;
+      if (!m.getSender().contains("<" + expectedEmailPrefix + ">") && !m.getSender().equals(expectedEmailPrefix)) {
+        throw new WebApplicationException(Status.FORBIDDEN);
+      }
+    }
+
+    hibernate.delete(m);
+
+    if (trueSenderDomain.equals(this.domain)) {
+      Set<String> remoteDests = new HashSet<>();
+      for (String dest : m.getDestination()) {
+        if (!dest.endsWith("@" + domain)) {
+          remoteDests.add(dest);
+        }
+      }
+      deleteFromRemoteDomains(name, mid, pwd, remoteDests);
+    }
+  }
+
+  private void deleteFromRemoteDomains(String name, String mid, String pwd, Set<String> remoteDests) {
+    Set<String> domainsToContact = new HashSet<>();
+    for (String dest : remoteDests) {
+      domainsToContact.add(dest.split("@")[1]);
+    }
+
+    for (String remoteDomain : domainsToContact) {
+      try {
+        URI[] uris = discovery.knownUrisOf("Messages@" + remoteDomain, 1);
+        if (uris != null && uris.length > 0) {
+          jerseyClient.target(uris[0])
+              .path("/messages/" + name + "/" + mid)
+              .queryParam("pwd", pwd)
+              .request()
+              .delete();
+        }
+      } catch (Exception e) {
+        Log.warning("Erro ao enviar delete para " + remoteDomain + ": " + e.getMessage());
       }
     }
   }

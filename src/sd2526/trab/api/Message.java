@@ -10,9 +10,6 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Column;
 
-/**
- * Represents a message in the system.
- */
 @Entity
 public class Message {
 

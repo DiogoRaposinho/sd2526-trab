@@ -7,10 +7,6 @@ import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.hibernate.cfg.Configuration;
 
-/**
- * A helper class to perform POJO (Plain Old Java Objects) persistence, using
- * Hibernate and a backing relational database.
- */
 public class Hibernate {
   private static final String HIBERNATE_CFG_FILE = "hibernate.cfg.xml";
   private SessionFactory sessionFactory;
@@ -27,23 +23,12 @@ public class Hibernate {
     }
   }
 
-  /**
-   * Returns the Hibernate instance, initializing if necessary.
-   * Requires a configuration file (hibernate.cfg.xml)
-   * 
-   * @return
-   */
   synchronized public static Hibernate getInstance() {
     if (instance == null)
       instance = new Hibernate();
     return instance;
   }
 
-  /**
-   * Persists one or more objects to storage
-   * 
-   * @param objects - the objects to persist
-   */
   public void persist(Object... objects) {
     Transaction tx = null;
     try (var session = sessionFactory.openSession()) {
@@ -58,12 +43,6 @@ public class Hibernate {
     }
   }
 
-  /**
-   * Gets one object from storage
-   * 
-   * @param identifier - the objects identifier
-   * @param clazz      - the class of the object that to be returned
-   */
   public <T> T get(Class<T> clazz, Object identifier) {
     Transaction tx = null;
     T element = null;
@@ -79,11 +58,6 @@ public class Hibernate {
     return element;
   }
 
-  /**
-   * Updates one or more objects previously persisted.
-   * 
-   * @param objects - the objects to update
-   */
   public void update(Object... objects) {
     Transaction tx = null;
     try (var session = sessionFactory.openSession()) {
@@ -98,11 +72,6 @@ public class Hibernate {
     }
   }
 
-  /**
-   * Removes one or more objects from storage
-   * 
-   * @param objects - the objects to remove from storage
-   */
   public void delete(Object... objects) {
     Transaction tx = null;
     try (var session = sessionFactory.openSession()) {
@@ -117,14 +86,6 @@ public class Hibernate {
     }
   }
 
-  /**
-   * Performs a jpql Hibernate query (SQL dialect)
-   * 
-   * @param <T>           The type of objects returned by the query
-   * @param jpqlStatement - the jpql query statement
-   * @param clazz         - the class of the objects that will be returned
-   * @return - list of objects that match the query
-   */
   public <T> List<T> jpql(String jpqlStatement, Class<T> clazz) {
     try (var session = sessionFactory.openSession()) {
       var query = session.createQuery(jpqlStatement, clazz);
@@ -134,14 +95,6 @@ public class Hibernate {
     }
   }
 
-  /**
-   * Performs a (native) SQL query
-   * 
-   * @param <T>          The type of objects returned by the query
-   * @param sqlStatement - the sql query statement
-   * @param clazz        - the class of the objects that will be returned
-   * @return - list of objects that match the query
-   */
   public <T> List<T> sql(String sqlStatement, Class<T> clazz) {
     try (var session = sessionFactory.openSession()) {
       var query = session.createNativeQuery(sqlStatement, clazz);
@@ -151,9 +104,6 @@ public class Hibernate {
     }
   }
 
-  /**
-   * Returns all objects of a certain class from storage.
-   */
   public <T> List<T> getAll(Class<T> clazz) {
     return jpql(String.format("SELECT o FROM %s o", clazz.getSimpleName()), clazz);
   }

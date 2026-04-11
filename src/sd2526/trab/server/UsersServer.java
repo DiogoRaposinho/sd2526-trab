@@ -22,13 +22,17 @@ public class UsersServer {
     }
 
     public static final int PORT = 8080;
-    public static final String SERVICE = "users";
+    public static final String SERVICE = "Users";
     private static final String SERVER_URI_FMT = "http://%s:%s/rest";
 
     public static void main(String[] args) {
         try {
+            String hostname = InetAddress.getLocalHost().getHostName();
+            String domain = hostname.contains(".") ? hostname.substring(hostname.indexOf('.') + 1) : "ourorg";
 
-            String domain = args.length > 0 ? args[0] : "ourorg";
+            if (args.length > 0 && args[0] != null && !args[0].isEmpty()) {
+                domain = args[0];
+            }
 
             ResourceConfig config = new ResourceConfig();
 
@@ -46,7 +50,7 @@ public class UsersServer {
             Log.info(String.format("%s Server ready @ %s. Local access: http://localhost:%d/rest\n",
                     SERVICE, domain, PORT));
 
-            new Discovery("Users", publicURI, domain).start();
+            new Discovery(SERVICE, publicURI, domain).start();
 
         } catch (Exception e) {
             Log.severe(e.getMessage());
